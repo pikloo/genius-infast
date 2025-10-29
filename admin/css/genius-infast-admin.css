@@ -1,0 +1,44 @@
+.genius-infast-test-connection {
+	margin: 20px 0;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.genius-infast-status {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    min-height: 20px;
+}
+
+.genius-infast-status.is-visible {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    min-height: 20px;
+}
+
+.genius-infast-status .dashicons {
+	font-size: 18px;
+}
+
+.genius-infast-status--success .dashicons {
+	color: #46b450;
+}
+
+.genius-infast-status--error .dashicons {
+	color: #dc3232;
+}
+
+.genius-infast-status--loading .dashicons {
+	color: #2271b1;
+	animation: genius-infast-spin 1s linear infinite;
+}
+
+@keyframes genius-infast-spin {
+	0% { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}
