@@ -77,5 +77,9 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 == Changelog ==
 
+= 1.0.0.1 =
+* Mise à jour automatique.
+
+
 = 1.0.0 =
 * Version initiale – synchronisation des commandes, paiements, e-mails et prise en charge du webhook de suppression de clients.

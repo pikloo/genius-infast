@@ -91,7 +91,7 @@ use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 $updateChecker = PucFactory::buildUpdateChecker(
 	'https://github.com/pikloo/genius-infast/',
 	__FILE__,
-	'genius-reviews'
+	'genius-infast'
 );
 
 
