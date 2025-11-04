@@ -77,8 +77,8 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 == Changelog ==
 
-= 1.0.1.1 =
-* Ajout de la description et suppression du titre du document.
+= 1.0.1.2 =
+* Fix remise et refunded_amount.
 
 = 1.0.1 =
 * Ajout de la description et suppression du titre du document.
