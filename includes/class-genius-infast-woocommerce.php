@@ -424,62 +424,265 @@ class Genius_Infast_WooCommerce
 
 		$lines = array();
 
-		foreach ($order->get_items(array('line_item')) as $item) {
+		$item_refunds = array();
+		$shipping_refunds = array();
+		$fee_refunds = array();
+
+		foreach ($order->get_refunds() as $refund) {
+			foreach ($refund->get_items('line_item') as $refund_item) {
+				$parent_id = (int) $refund_item->get_meta('_refunded_item_id', true);
+				if (!$parent_id) {
+					continue;
+				}
+
+				if (!isset($item_refunds[$parent_id])) {
+					$item_refunds[$parent_id] = array(
+						'quantity' => 0.0,
+						'total' => 0.0,
+						'tax' => 0.0,
+					);
+				}
+
+				$item_refunds[$parent_id]['quantity'] += abs((float) $refund_item->get_quantity());
+				$item_refunds[$parent_id]['total'] += abs((float) $refund_item->get_total());
+				$item_refunds[$parent_id]['tax'] += abs((float) $refund_item->get_total_tax());
+			}
+
+			foreach ($refund->get_items('shipping') as $refund_shipping) {
+				$parent_id = (int) $refund_shipping->get_meta('_refunded_item_id', true);
+				if (!$parent_id) {
+					continue;
+				}
+
+				if (!isset($shipping_refunds[$parent_id])) {
+					$shipping_refunds[$parent_id] = array(
+						'total' => 0.0,
+						'tax' => 0.0,
+					);
+				}
+
+				$shipping_refunds[$parent_id]['total'] += abs((float) $refund_shipping->get_total());
+				$shipping_refunds[$parent_id]['tax'] += abs((float) $refund_shipping->get_total_tax());
+			}
+
+			foreach ($refund->get_items('fee') as $refund_fee) {
+				$parent_id = (int) $refund_fee->get_meta('_refunded_item_id', true);
+				if (!$parent_id) {
+					continue;
+				}
+
+				if (!isset($fee_refunds[$parent_id])) {
+					$fee_refunds[$parent_id] = array(
+						'total' => 0.0,
+						'tax' => 0.0,
+					);
+				}
+
+				$fee_refunds[$parent_id]['total'] += abs((float) $refund_fee->get_total());
+				$fee_refunds[$parent_id]['tax'] += abs((float) $refund_fee->get_total_tax());
+			}
+		}
+
+		$line_discounts_total = 0.0;
+
+		foreach ($order->get_items(array('line_item')) as $item_id => $item) {
 			/** @var WC_Order_Item_Product $item */
 			$product = $item->get_product();
-			$quantity = (float) max(1, $item->get_quantity());
+			$ordered_quantity = (float) max(0, $item->get_quantity());
+			$refunded_quantity = isset($item_refunds[$item_id]) ? (float) $item_refunds[$item_id]['quantity'] : 0.0;
+			$refunded_amount = isset($item_refunds[$item_id]) ? (float) $item_refunds[$item_id]['total'] : 0.0;
+			if ($refunded_quantity <= 0.0001) {
+				$wc_refunded_quantity = abs((float) $order->get_qty_refunded_for_item($item_id));
+				if ($wc_refunded_quantity > 0.0001) {
+					$refunded_quantity = $wc_refunded_quantity;
+				}
+			}
+			if ($refunded_amount <= 0.0001) {
+				$wc_refunded_amount = abs((float) $order->get_total_refunded_for_item($item_id));
+				if ($wc_refunded_amount > 0.0001) {
+					$refunded_amount = $wc_refunded_amount;
+				}
+			}
+			$subtotal = (float) $item->get_subtotal();
+			$subtotal_tax = (float) $item->get_subtotal_tax();
 			$total = (float) $item->get_total();
 			$total_tax = (float) $item->get_total_tax();
-			$unit_price = $quantity > 0 ? $total / $quantity : 0;
+			$net_quantity = max(0.0, $ordered_quantity - $refunded_quantity);
+			$quantity_for_unit = $ordered_quantity > 0 ? $ordered_quantity : 1.0;
+			$unit_price = $quantity_for_unit > 0 ? $subtotal / $quantity_for_unit : 0.0;
+			if (0.0 === $unit_price && $quantity_for_unit > 0) {
+				$unit_price = $total / $quantity_for_unit;
+			}
+			$discount_percent = 0.0;
+			if ($subtotal > 0 && $total < $subtotal) {
+				$discount_percent = 100 - ((100 * $total) / $subtotal);
+			}
+			$discount_percent = max(0.0, min(100.0, $discount_percent));
+			$line_discount_amount = max(0.0, $subtotal - $total);
+			$line_discounts_total += $line_discount_amount;
 			$sku = $product ? $product->get_sku() : '';
 			$product_id = $item->get_product_id();
 			$reference = $sku ? $sku : ($product_id ? (string) $product_id : 'ITEM-' . $item->get_id());
-			$vat = $this->calculate_vat_rate($total, $total_tax);
-			$item_payload = array(
-				'lineType' => 'ITEM',
-				'name' => $item->get_name(),
-				'reference' => $reference,
-				'price' => $this->format_amount($unit_price),
-				'quantity' => $this->format_quantity($quantity),
-				'vat' => $this->format_amount($vat),
-				'type' => ($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
-			);
-
-			$lines[] = $item_payload;
-		}
-
-		$shipping_total = (float) $order->get_shipping_total();
-		$shipping_tax = (float) $order->get_shipping_tax();
-
-		if ($shipping_total || $shipping_tax) {
-			$lines[] = array(
-				'lineType' => 'ITEM',
-				'name' => $order->get_shipping_method() ? $order->get_shipping_method() : __('Livraison', 'genius_infast'),
-				'reference' => 'SHIPPING',
-				'price' => $this->format_amount($shipping_total),
-				'quantity' => $this->format_quantity(1),
-				'vat' => $this->format_amount($this->calculate_vat_rate($shipping_total, $shipping_tax)),
-				'type' => 'SERVICE',
-			);
-		}
-
-		foreach ($order->get_fees() as $fee) {
-			$total = (float) $fee->get_total();
-			$total_tax = (float) $fee->get_total_tax();
-
-			if (0 === $total && 0 === $total_tax) {
-				continue;
+			$vat_base = $subtotal > 0 ? $subtotal : $total;
+			$vat_tax = $subtotal > 0 ? $subtotal_tax : $total_tax;
+			$vat = $this->calculate_vat_rate($vat_base, $vat_tax);
+			$description = '';
+			if ($product) {
+				$description = wp_strip_all_tags($product->get_short_description());
+				if ('' === $description) {
+					$description = wp_strip_all_tags($product->get_description());
+				}
 			}
 
-			$lines[] = array(
-				'lineType' => 'ITEM',
-				'name' => $fee->get_name(),
-				'reference' => 'FEE-' . $fee->get_id(),
-				'price' => $this->format_amount($total),
-				'quantity' => $this->format_quantity(1),
-				'vat' => $this->format_amount($this->calculate_vat_rate($total, $total_tax)),
-				'type' => 'SERVICE',
-			);
+			if ('' === $description) {
+				$meta_description = function_exists('wc_display_item_meta') ? wc_display_item_meta(
+					$item,
+					array(
+						'before' => '',
+						'separator' => ', ',
+						'after' => '',
+						'echo' => false,
+					)
+				) : '';
+
+				$description = wp_strip_all_tags((string) $meta_description);
+			}
+
+			if ($net_quantity > 0) {
+				$item_payload = array(
+					'lineType' => 'ITEM',
+					'name' => $item->get_name(),
+					'reference' => $reference,
+					'price' => $this->format_amount($unit_price),
+					'quantity' => $this->format_quantity($net_quantity),
+					'vat' => $this->format_amount($vat),
+					'type' => ($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
+				);
+
+				if ('' !== $description) {
+					$item_payload['description'] = $description;
+				}
+
+				if ($discount_percent > 0) {
+					$item_payload['discount'] = $this->format_percentage($discount_percent);
+				}
+
+				$lines[] = $item_payload;
+			}
+
+			$unit_total_after_discount = $quantity_for_unit > 0 ? $total / $quantity_for_unit : 0.0;
+			if ($refunded_amount <= 0 && $refunded_quantity > 0 && $unit_total_after_discount > 0) {
+				$refunded_amount = $refunded_quantity * $unit_total_after_discount;
+			}
+
+			if ($refunded_amount > 0.0001) {
+				$refund_payload = array(
+					'lineType' => 'ITEM',
+					'name' => sprintf(__('Remboursement %s', 'genius_infast'), $item->get_name()),
+					'reference' => 'REFUND-' . $reference,
+					'price' => $this->format_amount($refunded_amount * -1),
+					'quantity' => $this->format_quantity(1),
+					'vat' => $this->format_amount($vat),
+					'type' => ($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
+					'phantom' => true,
+				);
+
+				if ('' !== $description) {
+					$refund_payload['description'] = $description;
+				}
+
+				$lines[] = $refund_payload;
+			}
+		}
+
+		foreach ($order->get_items('shipping') as $shipping_item_id => $shipping_item) {
+			$shipping_total = (float) $shipping_item->get_total();
+			$shipping_tax = (float) $shipping_item->get_total_tax();
+			$refunded_shipping_total = isset($shipping_refunds[$shipping_item_id]) ? (float) $shipping_refunds[$shipping_item_id]['total'] : 0.0;
+			$refunded_shipping_tax = isset($shipping_refunds[$shipping_item_id]) ? (float) $shipping_refunds[$shipping_item_id]['tax'] : 0.0;
+			$shipping_name = $shipping_item->get_name() ? $shipping_item->get_name() : __('Livraison', 'genius_infast');
+			$shipping_reference = 'SHIPPING-' . $shipping_item_id;
+			$shipping_vat = $this->calculate_vat_rate($shipping_total, $shipping_tax);
+
+			if ($refunded_shipping_total <= 0.0001 && method_exists($order, 'get_total_refunded_for_item')) {
+				$wc_shipping_refund = abs((float) $order->get_total_refunded_for_item($shipping_item_id, 'shipping'));
+				if ($wc_shipping_refund > 0.0001) {
+					$refunded_shipping_total = $wc_shipping_refund;
+				}
+			}
+
+			if ($shipping_vat <= 0 && $refunded_shipping_total > 0 && $refunded_shipping_tax > 0) {
+				$shipping_vat = $this->calculate_vat_rate($refunded_shipping_total, $refunded_shipping_tax);
+			}
+
+			if ($shipping_total || $shipping_tax) {
+				$lines[] = array(
+					'lineType' => 'ITEM',
+					'name' => $shipping_name,
+					'reference' => $shipping_reference,
+					'price' => $this->format_amount($shipping_total),
+					'quantity' => $this->format_quantity(1),
+					'vat' => $this->format_amount($shipping_vat),
+					'type' => 'SERVICE',
+				);
+			}
+
+			if ($refunded_shipping_total > 0.0001) {
+				$lines[] = array(
+					'lineType' => 'ITEM',
+					'name' => sprintf(__('Remboursement %s', 'genius_infast'), $shipping_name),
+					'reference' => 'REFUND-' . $shipping_reference,
+					'price' => $this->format_amount($refunded_shipping_total * -1),
+					'quantity' => $this->format_quantity(1),
+					'vat' => $this->format_amount($shipping_vat),
+					'type' => 'SERVICE',
+					'phantom' => true,
+				);
+			}
+		}
+
+		foreach ($order->get_fees() as $fee_id => $fee) {
+			$total = (float) $fee->get_total();
+			$total_tax = (float) $fee->get_total_tax();
+			$refunded_fee_total = isset($fee_refunds[$fee_id]) ? (float) $fee_refunds[$fee_id]['total'] : 0.0;
+			$refunded_fee_tax = isset($fee_refunds[$fee_id]) ? (float) $fee_refunds[$fee_id]['tax'] : 0.0;
+			$vat = $this->calculate_vat_rate($total, $total_tax);
+
+			if ($refunded_fee_total <= 0.0001 && method_exists($order, 'get_total_refunded_for_item')) {
+				$wc_fee_refund = abs((float) $order->get_total_refunded_for_item($fee_id, 'fee'));
+				if ($wc_fee_refund > 0.0001) {
+					$refunded_fee_total = $wc_fee_refund;
+				}
+			}
+
+			if ($vat <= 0 && $refunded_fee_total > 0 && $refunded_fee_tax > 0) {
+				$vat = $this->calculate_vat_rate($refunded_fee_total, $refunded_fee_tax);
+			}
+
+			if (0 !== $total || 0 !== $total_tax) {
+				$lines[] = array(
+					'lineType' => 'ITEM',
+					'name' => $fee->get_name(),
+					'reference' => 'FEE-' . $fee->get_id(),
+					'price' => $this->format_amount($total),
+					'quantity' => $this->format_quantity(1),
+					'vat' => $this->format_amount($vat),
+					'type' => 'SERVICE',
+				);
+			}
+
+			if ($refunded_fee_total > 0.0001) {
+				$lines[] = array(
+					'lineType' => 'ITEM',
+					'name' => sprintf(__('Remboursement %s', 'genius_infast'), $fee->get_name()),
+					'reference' => 'REFUND-FEE-' . $fee->get_id(),
+					'price' => $this->format_amount($refunded_fee_total * -1),
+					'quantity' => $this->format_quantity(1),
+					'vat' => $this->format_amount($vat),
+					'type' => 'SERVICE',
+					'phantom' => true,
+				);
+			}
 		}
 
 		if (empty($lines)) {
@@ -488,6 +691,10 @@ class Genius_Infast_WooCommerce
 
 		$payment_method = $this->map_payment_method($order->get_payment_method());
 		$document_reference = $order->get_order_number();
+		$document_description = trim((string) $order->get_customer_note());
+		if ('' === $document_description) {
+			$document_description = sprintf(__('Commande no%s', 'genius_infast'), $document_reference);
+		}
 
 		$payload = array(
 			'type' => 'INVOICE',
@@ -495,6 +702,7 @@ class Genius_Infast_WooCommerce
 			'customerId' => $customer_id,
 			'lines' => $lines,
 			'referenceInternal' => (string) $document_reference,
+			'description' => $document_description,
 			'emitDate' => $emit_date,
 			'dueDate' => $emit_date,
 			'metadata' => 'INTERNAL_DB_ID=' . $order->get_id(),
@@ -502,11 +710,12 @@ class Genius_Infast_WooCommerce
 		);
 
 		$discount_total = (float) $order->get_discount_total();
+		$remaining_discount = $discount_total - $line_discounts_total;
 
-		if ($discount_total > 0) {
+		if ($remaining_discount > 0.0001) {
 			$payload['discount'] = array(
 				'type' => 'CASH',
-				'amount' => $this->format_amount($discount_total),
+				'amount' => $this->format_amount($remaining_discount),
 			);
 		}
 
@@ -674,6 +883,23 @@ class Genius_Infast_WooCommerce
 		}
 
 		return round($amount, $decimals);
+	}
+
+	/**
+	 * Format percentage values with WooCommerce precision.
+	 *
+	 * @param float $value Percentage value.
+	 * @return float
+	 */
+	private function format_percentage($value)
+	{
+		$value = (float) $value;
+
+		if (function_exists('wc_format_decimal')) {
+			return (float) wc_format_decimal($value, 4);
+		}
+
+		return round($value, 4);
 	}
 
 	/**
