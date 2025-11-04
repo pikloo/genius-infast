@@ -488,7 +488,6 @@ class Genius_Infast_WooCommerce
 
 		$payment_method = $this->map_payment_method($order->get_payment_method());
 		$document_reference = $order->get_order_number();
-		$document_title = sprintf(__('Commande no%s', 'genius_infast'), $document_reference);
 
 		$payload = array(
 			'type' => 'INVOICE',
@@ -496,12 +495,20 @@ class Genius_Infast_WooCommerce
 			'customerId' => $customer_id,
 			'lines' => $lines,
 			'referenceInternal' => (string) $document_reference,
-			'title' => $document_title,
 			'emitDate' => $emit_date,
 			'dueDate' => $emit_date,
 			'metadata' => 'INTERNAL_DB_ID=' . $order->get_id(),
 
 		);
+
+		$discount_total = (float) $order->get_discount_total();
+
+		if ($discount_total > 0) {
+			$payload['discount'] = array(
+				'type' => 'CASH',
+				'amount' => $this->format_amount($discount_total),
+			);
+		}
 
 		if ($payment_method) {
 			$payload['paymentMethod'] = $payment_method;
