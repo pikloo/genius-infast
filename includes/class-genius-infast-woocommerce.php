@@ -556,7 +556,7 @@ class Genius_Infast_WooCommerce
 					'price' => $this->format_amount($unit_price),
 					'quantity' => $this->format_quantity($net_quantity),
 					'vat' => $this->format_amount($vat),
-					'type' => ($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
+					'type' => 'SERVICE' //($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
 				);
 
 				if ('' !== $description) {

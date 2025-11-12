@@ -77,6 +77,9 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 == Changelog ==
 
+= 1.0.1.3 =
+* Forcer SERVICE en type d'item.
+
 = 1.0.1.2 =
 * Fix remise et refunded_amount.
 
