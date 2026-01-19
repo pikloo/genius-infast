@@ -111,6 +111,10 @@ class Genius_Infast_WooCommerce
 			return;
 		}
 
+		if ($this->should_skip_infast_order($order)) {
+			return;
+		}
+
 		// Avoid concurrent executions.
 		if ('yes' === $order->get_meta('_genius_infast_syncing', true)) {
 			return;
@@ -128,6 +132,39 @@ class Genius_Infast_WooCommerce
 
 		$order->delete_meta_data('_genius_infast_syncing');
 		$order->save();
+	}
+
+	/**
+	 * Determine whether the order should be ignored for INFast syncing.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return string Empty string when order can be synced, or reason label otherwise.
+	 */
+	private function should_skip_infast_order(WC_Order $order)
+	{
+		$total = (float) $order->get_total();
+		if ($total <= 0) {
+			return true;
+		}
+
+		$payment_method = (string) $order->get_payment_method();
+		if ('wfocu_test' === $payment_method) {
+			return true;
+		}
+
+		$user_id = $order->get_user_id();
+		if ($user_id) {
+			$user = get_user_by('id', $user_id);
+			if ($user && in_array('administrator', (array) $user->roles, true)) {
+				return true;
+			}
+		}
+
+		if (method_exists($order, 'get_created_via') && 'admin' === $order->get_created_via()) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
