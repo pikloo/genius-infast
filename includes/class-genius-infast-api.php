@@ -157,6 +157,16 @@ class Genius_Infast_API {
 	}
 
 	/**
+	 * Legacy helper: export document PDF.
+	 *
+	 * @param string $document_id Document identifier.
+	 * @return array|WP_Error
+	 */
+	public function export_document_pdf( $document_id ) {
+		return $this->documents->export_pdf( $document_id );
+	}
+
+	/**
 	 * Test authentication by calling /me.
 	 *
 	 * @return array|WP_Error

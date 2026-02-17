@@ -214,6 +214,9 @@ class Genius_Infast {
 
 		$plugin_public = new Genius_Infast_Public( $this->get_plugin_name(), $this->get_version() );
 
+		$this->loader->add_action( 'init', $plugin_public, 'register_shortcodes' );
+		$this->loader->add_action( 'admin_post_genius_infast_document_pdf', $plugin_public, 'handle_document_pdf_download' );
+		$this->loader->add_action( 'admin_post_nopriv_genius_infast_document_pdf', $plugin_public, 'handle_document_pdf_download' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
 

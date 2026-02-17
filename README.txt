@@ -77,6 +77,9 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 == Changelog ==
 
+= 1.0.1.5 =
+* Ajout d'un shortcode générant un lien pdf d'un document
+
 = 1.0.1.4 =
 * Bloquer l'envoi à l'API lors de test ou commande offerte
 

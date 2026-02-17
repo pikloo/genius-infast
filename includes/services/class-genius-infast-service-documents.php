@@ -80,5 +80,17 @@ class Genius_Infast_Service_Documents {
 		);
 	}
 
-	
+	/**
+	 * Export a document as PDF.
+	 *
+	 * @param string $document_id Document identifier.
+	 * @return array|WP_Error
+	 */
+	public function export_pdf( $document_id ) {
+		return $this->client->request(
+			'GET',
+			'documents/' . rawurlencode( $document_id ) . '/pdf'
+		);
+	}
+
 }
