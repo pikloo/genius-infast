@@ -77,7 +77,10 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 == Changelog ==
 
-= 1.0.1.5 =
+= 1.0.1.6 =
+
+* Ajout image dans le shortcode pdf
+
 * Ajout d'un shortcode générant un lien pdf d'un document
 
 = 1.0.1.4 =

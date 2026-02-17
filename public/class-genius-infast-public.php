@@ -72,6 +72,10 @@ class Genius_Infast_Public {
 	 * Attributes:
 	 * - order_id: WooCommerce order ID containing _genius_infast_document_id meta.
 	 * - label: Link text (default: Télécharger la facture).
+	 * - img_url: Icon URL displayed before label.
+	 * - img_alt: Icon alt text (default: PDF).
+	 * - img_width: Icon width in pixels (default: 20).
+	 * - img_height: Icon height in pixels (default: 20).
 	 * - format: link|url (default: link).
 	 * - class: CSS classes when format=link.
 	 * - target: HTML target when format=link (default: _blank).
@@ -84,6 +88,10 @@ class Genius_Infast_Public {
 			array(
 				'order_id' => '',
 				'label'    => __( 'Telecharger la facture', 'genius_infast' ),
+				'img_url'  => 'https://cdn-icons-png.flaticon.com/512/337/337946.png',
+				'img_alt'  => 'PDF',
+				'img_width' => '20',
+				'img_height' => '20',
 				'format'   => 'link',
 				'class'    => 'genius-infast-document-link',
 				'target'   => '_blank',
@@ -110,12 +118,28 @@ class Genius_Infast_Public {
 		$label  = wp_strip_all_tags( (string) $atts['label'] );
 		$class  = sanitize_html_class( (string) $atts['class'] );
 		$target = sanitize_text_field( (string) $atts['target'] );
+		$img_url = esc_url_raw( (string) $atts['img_url'] );
+		$img_alt = wp_strip_all_tags( (string) $atts['img_alt'] );
+		$img_width = absint( $atts['img_width'] );
+		$img_height = absint( $atts['img_height'] );
+		$img_html = '';
+
+		if ( '' !== $img_url ) {
+			$img_html = sprintf(
+				'<img src="%1$s" alt="%2$s" width="%3$d" height="%4$d" /> ',
+				esc_url( $img_url ),
+				esc_attr( $img_alt ),
+				max( 1, $img_width ),
+				max( 1, $img_height )
+			);
+		}
 
 		return sprintf(
-			'<a href="%1$s" class="%2$s" target="%3$s" rel="noopener noreferrer">%4$s</a>',
+			'<a href="%1$s" class="%2$s" target="%3$s" rel="noopener noreferrer">%4$s%5$s</a>',
 			esc_url( $url ),
 			esc_attr( $class ),
 			esc_attr( $target ),
+			$img_html,
 			esc_html( $label )
 		);
 	}
