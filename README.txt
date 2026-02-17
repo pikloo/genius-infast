@@ -81,6 +81,8 @@ Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur
 
 * Ajout image dans le shortcode pdf
 
+= 1.0.1.5 =
+
 * Ajout d'un shortcode générant un lien pdf d'un document
 
 = 1.0.1.4 =
