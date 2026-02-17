@@ -166,7 +166,7 @@ class Genius_Infast_Public {
 			wp_die( esc_html__( 'Acces refuse.', 'genius_infast' ), '', array( 'response' => 403 ) );
 		}
 
-		$document_id = sanitize_text_field( (string) $order->get_meta( '_genius_infast_document_id', true ) );
+		$document_id = $this->get_order_document_id( $order );
 		if ( '' === $document_id ) {
 			wp_die( esc_html__( 'Aucun document INFast pour cette commande.', 'genius_infast' ), '', array( 'response' => 404 ) );
 		}
@@ -232,7 +232,7 @@ class Genius_Infast_Public {
 			return '';
 		}
 
-		$document_id = sanitize_text_field( (string) $order->get_meta( '_genius_infast_document_id', true ) );
+		$document_id = $this->get_order_document_id( $order );
 		if ( '' === $document_id ) {
 			return '';
 		}
@@ -272,6 +272,22 @@ class Genius_Infast_Public {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Resolve INFast document ID from order meta.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return string
+	 */
+	private function get_order_document_id( WC_Order $order ) {
+		$document_id = sanitize_text_field( (string) $order->get_meta( '_genius_infast_document_id', true ) );
+
+		if ( '' === $document_id ) {
+			$document_id = sanitize_text_field( (string) $order->get_meta( '_infast_document_id', true ) );
+		}
+
+		return $document_id;
 	}
 
 	/**

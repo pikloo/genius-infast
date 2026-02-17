@@ -76,6 +76,9 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.7 =
+
+* Ajout fallback _infast_document_id
 
 = 1.0.1.6 =
 
