@@ -204,7 +204,7 @@ class Genius_Infast_WooCommerce
 			$email_result = $this->maybe_send_document_email($order, $api, $document_id);
 			if (is_wp_error($email_result)) {
 				$this->log_error($email_result->get_error_message(), array('order_id' => $order->get_id(), 'document_id' => $document_id));
-				$order->add_order_note(sprintf(__('Impossible d envoyer automatiquement l e-mail INFast : %s', 'genius_infast'), $email_result->get_error_message()));
+				$order->add_order_note(sprintf(__('Impossible d\'envoyer automatiquement l\'e-mail INFast : %s', 'genius_infast'), $email_result->get_error_message()));
 			}
 		}
 	}
@@ -268,7 +268,7 @@ class Genius_Infast_WooCommerce
 
 		$customer_id = $response['data']['id'];
 		$this->persist_customer_reference($order, $customer_id);
-		$order->add_order_note(__('Client cree sur INFast.', 'genius_infast'));
+		$order->add_order_note(__('Client crée sur INFast.', 'genius_infast'));
 
 		return $customer_id;
 	}
@@ -289,7 +289,7 @@ class Genius_Infast_WooCommerce
 			return $document_id;
 		}
 
-		$payload = $this->build_document_payload($order, $customer_id);
+		$payload = $this->build_document_payload($order, $customer_id, $api);
 
 		$response = $api->create_document($payload);
 
@@ -304,7 +304,7 @@ class Genius_Infast_WooCommerce
 		$document_id = $response['data']['id'];
 		$order->update_meta_data('_genius_infast_document_id', $document_id);
 		$order->save();
-		$order->add_order_note(sprintf(__('Facture %s creee sur INFast.', 'genius_infast'), $document_id));
+		$order->add_order_note(sprintf(__('Facture %s créée sur INFast.', 'genius_infast'), $document_id));
 
 		return $document_id;
 	}
@@ -355,7 +355,7 @@ class Genius_Infast_WooCommerce
 
 		$order->update_meta_data('_genius_infast_transaction_id', $payment_response['data']['id']);
 		$order->save();
-		$order->add_order_note(__('Paiement enregistre sur INFast.', 'genius_infast'));
+		$order->add_order_note(__('Paiement enregistré sur INFast.', 'genius_infast'));
 
 		return true;
 	}
@@ -391,7 +391,7 @@ class Genius_Infast_WooCommerce
 
 		$order->update_meta_data('_genius_infast_document_email_sent', 'yes');
 		$order->save();
-		$order->add_order_note(__('Facture envoyee via INFast.', 'genius_infast'));
+		$order->add_order_note(__('Facture envoyée via INFast.', 'genius_infast'));
 
 		return true;
 	}
@@ -450,11 +450,12 @@ class Genius_Infast_WooCommerce
 	/**
 	 * Prepare document payload for INFast invoice creation.
 	 *
-	 * @param WC_Order $order       WooCommerce order.
-	 * @param string   $customer_id INFast customer identifier.
+	 * @param WC_Order          $order       WooCommerce order.
+	 * @param string            $customer_id INFast customer identifier.
+	 * @param Genius_Infast_API $api         API client.
 	 * @return array
 	 */
-	private function build_document_payload(WC_Order $order, $customer_id)
+	private function build_document_payload(WC_Order $order, $customer_id, Genius_Infast_API $api)
 	{
 		$order_timestamp = $order->get_date_paid() ? $order->get_date_paid()->getTimestamp() : current_time('timestamp', true);
 		$emit_date = gmdate('c', $order_timestamp);
@@ -521,6 +522,7 @@ class Genius_Infast_WooCommerce
 		}
 
 		$line_discounts_total = 0.0;
+		$item_id_cache = array();
 
 		foreach ($order->get_items(array('line_item')) as $item_id => $item) {
 			/** @var WC_Order_Item_Product $item */
@@ -602,6 +604,36 @@ class Genius_Infast_WooCommerce
 
 				if ($discount_percent > 0) {
 					$item_payload['discount'] = $this->format_percentage($discount_percent);
+				}
+
+				$item_id = $this->resolve_or_create_infast_item_id(
+					$api,
+					array(
+						'name' => $item_payload['name'],
+						'reference' => $reference,
+						'price' => $item_payload['price'],
+						'vat' => $item_payload['vat'],
+						'type' => $item_payload['type'],
+						'description' => isset($item_payload['description']) ? $item_payload['description'] : '',
+					),
+					$item_id_cache,
+					$product
+				);
+
+				if (is_wp_error($item_id)) {
+					throw new Exception($item_id->get_error_message());
+				}
+
+				if (!empty($item_id)) {
+					$item_payload = array(
+						'lineType' => 'ITEM',
+						'itemId' => $item_id,
+						'quantity' => $this->format_quantity($net_quantity),
+					);
+
+					if ($discount_percent > 0) {
+						$item_payload['discount'] = $this->format_percentage($discount_percent);
+					}
 				}
 
 				$lines[] = $item_payload;
@@ -985,6 +1017,129 @@ class Genius_Infast_WooCommerce
 		}
 
 		return strtoupper($country_code);
+	}
+
+	/**
+	 * Resolve an INFast item by reference, create it when missing, and update it when needed.
+	 *
+	 * @param Genius_Infast_API $api            API client.
+	 * @param array             $item_definition Item data.
+	 * @param array             $cache           Reference => item id cache.
+	 * @return string|WP_Error
+	 */
+	private function resolve_or_create_infast_item_id(Genius_Infast_API $api, array $item_definition, array &$cache, $product = null)
+	{
+		$reference = isset($item_definition['reference']) ? trim((string) $item_definition['reference']) : '';
+
+		if ('' === $reference) {
+			return '';
+		}
+
+		if (isset($cache[$reference])) {
+			return $cache[$reference];
+		}
+
+		$product_item_id = '';
+		if ($product instanceof WC_Product) {
+			$product_item_id = trim((string) $product->get_meta('_genius_infast_item_id', true));
+		}
+
+		$payload = array(
+			'name' => isset($item_definition['name']) ? $item_definition['name'] : $reference,
+			'reference' => $reference,
+			'price' => isset($item_definition['price']) ? $item_definition['price'] : 0,
+			'vat' => isset($item_definition['vat']) ? $item_definition['vat'] : 0,
+			'type' => isset($item_definition['type']) ? $item_definition['type'] : 'SERVICE',
+		);
+
+		$description = isset($item_definition['description']) ? trim((string) $item_definition['description']) : '';
+		if ('' !== $description) {
+			$payload['description'] = $description;
+		}
+
+		if ('' !== $product_item_id) {
+			$update = $api->update_item($product_item_id, $payload);
+
+			if (!is_wp_error($update)) {
+				$cache[$reference] = $product_item_id;
+				return $product_item_id;
+			}
+
+			if (!$this->is_not_found_wp_error($update)) {
+				return $update;
+			}
+		}
+
+		$found = $api->find_item_by_reference($reference);
+		if (is_wp_error($found)) {
+			return $found;
+		}
+
+		$item = $this->extract_first_item_from_search_response($found);
+
+		if ($item && !empty($item['id'])) {
+			$item_id = (string) $item['id'];
+			$remote_name = isset($item['name']) ? trim((string) $item['name']) : '';
+			$local_name = trim((string) $payload['name']);
+
+			if ($remote_name !== $local_name) {
+				$update = $api->update_item($item_id, $payload);
+				if (is_wp_error($update)) {
+					return $update;
+				}
+			}
+
+			if ($product instanceof WC_Product) {
+				$product->update_meta_data('_genius_infast_item_id', $item_id);
+				$product->save_meta_data();
+			}
+
+			$cache[$reference] = $item_id;
+			return $item_id;
+		}
+
+		$created = $api->create_item($payload);
+		if (is_wp_error($created)) {
+			return $created;
+		}
+
+		if (empty($created['data']['id'])) {
+			return new WP_Error('genius_infast_missing_item_id', __('La reponse INFast ne contient pas d identifiant article.', 'genius_infast'));
+		}
+
+		$item_id = (string) $created['data']['id'];
+
+		if ($product instanceof WC_Product) {
+			$product->update_meta_data('_genius_infast_item_id', $item_id);
+			$product->save_meta_data();
+		}
+
+		$cache[$reference] = $item_id;
+
+		return $item_id;
+	}
+
+	/**
+	 * Extract the first item from possible INFast list response formats.
+	 *
+	 * @param array $response API response.
+	 * @return array|null
+	 */
+	private function extract_first_item_from_search_response(array $response)
+	{
+		if (!empty($response['data'][0]) && is_array($response['data'][0])) {
+			return $response['data'][0];
+		}
+
+		if (!empty($response['data']['items'][0]) && is_array($response['data']['items'][0])) {
+			return $response['data']['items'][0];
+		}
+
+		if (!empty($response['items'][0]) && is_array($response['items'][0])) {
+			return $response['items'][0];
+		}
+
+		return null;
 	}
 
 

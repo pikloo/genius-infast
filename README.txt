@@ -76,16 +76,16 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
-= 1.0.1.7 =
+= 1.0.1.8 =
+* Fix création de doublons de produits Woocommerce dans INFAST
 
+= 1.0.1.7 =
 * Ajout fallback _infast_document_id
 
 = 1.0.1.6 =
-
 * Ajout image dans le shortcode pdf
 
 = 1.0.1.5 =
-
 * Ajout d'un shortcode générant un lien pdf d'un document
 
 = 1.0.1.4 =
