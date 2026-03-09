@@ -76,6 +76,9 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.9 =
+* Verrouillage des synchros INFast sur statuts de paiement + fallback de référence item si SKU vide ou > 24 caractères.
+
 = 1.0.1.8 =
 * Fix création de doublons de produits Woocommerce dans INFAST
 

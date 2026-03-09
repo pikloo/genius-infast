@@ -508,8 +508,9 @@ class Genius_Infast_Product_Sync
 	private function get_product_reference(WC_Product $product)
 	{
 		$sku = $product->get_sku();
-		if ($sku) {
-			return $this->sanitize_reference($sku);
+		$sanitized_sku = preg_replace('/[^A-Za-z0-9-_]/', '', (string) $sku);
+		if ('' !== $sanitized_sku && strlen($sanitized_sku) <= 24) {
+			return $this->sanitize_reference($sanitized_sku);
 		}
 
 		return $this->sanitize_reference($product->get_id());

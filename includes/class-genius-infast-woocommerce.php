@@ -82,7 +82,22 @@ class Genius_Infast_WooCommerce
 	 */
 	public function handle_order_status_changed($order_id, $old_status = '', $new_status = '', $order = null)
 	{
-		unset($old_status, $new_status, $order);
+		$normalized_new_status = $this->normalize_order_status($new_status);
+
+		if ('' === $normalized_new_status) {
+			return;
+		}
+
+		if ($this->is_blocked_order_status($normalized_new_status)) {
+			return;
+		}
+
+		$trigger_statuses = array_map(array($this, 'normalize_order_status'), $this->get_trigger_statuses());
+		if (!in_array($normalized_new_status, $trigger_statuses, true)) {
+			return;
+		}
+
+		unset($old_status, $order);
 		$this->synchronise_order($order_id);
 	}
 
@@ -104,14 +119,28 @@ class Genius_Infast_WooCommerce
 			return;
 		}
 
+		$current_status = $this->normalize_order_status($order->get_status());
 		$statuses = $this->get_trigger_statuses();
-		$status = 'wc-' . $order->get_status();
+		$status = 'wc-' . $current_status;
 
 		if (!in_array($status, $statuses, true)) {
 			return;
 		}
 
 		if ($this->should_skip_infast_order($order)) {
+			return;
+		}
+
+		if ($this->is_blocked_order_status($current_status) || $order->needs_payment()) {
+			return;
+		}
+
+		if ($this->is_order_fully_synced($order)) {
+			return;
+		}
+
+		$last_synced_status = $this->normalize_order_status($order->get_meta('_genius_infast_last_synced_status', true));
+		if ('' !== $last_synced_status && $last_synced_status === $current_status) {
 			return;
 		}
 
@@ -125,6 +154,8 @@ class Genius_Infast_WooCommerce
 
 		try {
 			$this->process_order($order);
+			$order->update_meta_data('_genius_infast_last_synced_status', $current_status);
+			$order->save();
 		} catch (Exception $exception) {
 			$this->log_error($exception->getMessage(), array('order_id' => $order->get_id()));
 			$order->add_order_note(sprintf(__('Erreur INFast : %s', 'genius_infast'), $exception->getMessage()));
@@ -165,6 +196,66 @@ class Genius_Infast_WooCommerce
 		}
 
 		return false;
+	}
+
+	/**
+	 * Determine whether the current order status must never trigger INFast.
+	 *
+	 * @param string $status WooCommerce order status without wc- prefix.
+	 * @return bool
+	 */
+	private function is_blocked_order_status($status)
+	{
+		return in_array(
+			$this->normalize_order_status($status),
+			array('failed', 'cancelled', 'pending', 'on-hold', 'checkout-draft'),
+			true
+		);
+	}
+
+	/**
+	 * Normalise an order status string.
+	 *
+	 * @param string $status Raw status.
+	 * @return string
+	 */
+	private function normalize_order_status($status)
+	{
+		$status = sanitize_key((string) $status);
+
+		if (0 === strpos($status, 'wc-')) {
+			$status = substr($status, 3);
+		}
+
+		return $status;
+	}
+
+	/**
+	 * Determine whether all required INFast actions already completed.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return bool
+	 */
+	private function is_order_fully_synced(WC_Order $order)
+	{
+		$document_id = trim((string) $order->get_meta('_genius_infast_document_id', true));
+		if ('' === $document_id) {
+			return false;
+		}
+
+		$total = (float) $order->get_total();
+		$transaction_id = trim((string) $order->get_meta('_genius_infast_transaction_id', true));
+		$payment_synced = $total <= 0 || '' !== $transaction_id;
+
+		if (!$payment_synced) {
+			return false;
+		}
+
+		if (!$this->should_send_email()) {
+			return true;
+		}
+
+		return 'yes' === $order->get_meta('_genius_infast_document_email_sent', true);
 	}
 
 	/**
@@ -561,7 +652,7 @@ class Genius_Infast_WooCommerce
 			$line_discounts_total += $line_discount_amount;
 			$sku = $product ? $product->get_sku() : '';
 			$product_id = $item->get_product_id();
-			$reference = $sku ? $sku : ($product_id ? (string) $product_id : 'ITEM-' . $item->get_id());
+			$reference = $this->build_item_reference($sku, $product_id, $item->get_id());
 			$vat_base = $subtotal > 0 ? $subtotal : $total;
 			$vat_tax = $subtotal > 0 ? $subtotal_tax : $total_tax;
 			$vat = $this->calculate_vat_rate($vat_base, $vat_tax);
@@ -1017,6 +1108,32 @@ class Genius_Infast_WooCommerce
 		}
 
 		return strtoupper($country_code);
+	}
+
+	/**
+	 * Build a valid INFast item reference.
+	 *
+	 * Falls back to an internal generated reference when the SKU is empty or too long.
+	 *
+	 * @param string $sku         Product SKU.
+	 * @param int    $product_id  WooCommerce product ID.
+	 * @param int    $fallback_id WooCommerce order item ID.
+	 * @return string
+	 */
+	private function build_item_reference($sku, $product_id = 0, $fallback_id = 0)
+	{
+		$sanitized_sku = preg_replace('/[^A-Za-z0-9-_]/', '', (string) $sku);
+
+		if ('' !== $sanitized_sku && strlen($sanitized_sku) <= 24) {
+			return $sanitized_sku;
+		}
+
+		if ($product_id > 0) {
+			return (string) $product_id;
+		}
+
+		$fallback_reference = 'ITEM-' . (int) $fallback_id;
+		return substr($fallback_reference, 0, 24);
 	}
 
 	/**
