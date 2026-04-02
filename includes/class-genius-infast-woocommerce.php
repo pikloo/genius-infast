@@ -1174,19 +1174,6 @@ class Genius_Infast_WooCommerce
 			$payload['description'] = $description;
 		}
 
-		if ('' !== $product_item_id) {
-			$update = $api->update_item($product_item_id, $payload);
-
-			if (!is_wp_error($update)) {
-				$cache[$reference] = $product_item_id;
-				return $product_item_id;
-			}
-
-			if (!$this->is_not_found_wp_error($update)) {
-				return $update;
-			}
-		}
-
 		$found = $api->find_item_by_reference($reference);
 		if (is_wp_error($found)) {
 			return $found;
@@ -1213,6 +1200,16 @@ class Genius_Infast_WooCommerce
 
 			$cache[$reference] = $item_id;
 			return $item_id;
+		}
+
+		// Do not trust a previously stored item ID blindly: two WooCommerce products may
+		// accidentally share the same local meta, which would overwrite the wrong INFast item.
+		if ('' !== $product_item_id) {
+			if ($product instanceof WC_Product) {
+				$product->delete_meta_data('_genius_infast_item_id');
+				$product->save_meta_data();
+			}
+			$product_item_id = '';
 		}
 
 		$created = $api->create_item($payload);
