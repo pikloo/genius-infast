@@ -309,18 +309,17 @@ class Genius_Infast_WooCommerce
 	 */
 	private function get_or_create_customer(WC_Order $order, Genius_Infast_API $api)
 	{
+		$payload = $this->build_customer_payload($order);
 		$existing_id = $order->get_meta('_genius_infast_customer_id', true);
 		if ($existing_id) {
-			return $existing_id;
+			return $this->get_matching_or_new_customer($order, $api, $existing_id, $payload, __('Client INFast existant conservé.', 'genius_infast'));
 		}
 
 		$user_id = $order->get_user_id();
 		if ($user_id) {
 			$user_customer_id = get_user_meta($user_id, '_genius_infast_customer_id', true);
 			if ($user_customer_id) {
-				$order->update_meta_data('_genius_infast_customer_id', $user_customer_id);
-				$order->save();
-				return $user_customer_id;
+				return $this->get_matching_or_new_customer($order, $api, $user_customer_id, $payload, __('Client INFast lié au compte conservé.', 'genius_infast'));
 			}
 		}
 
@@ -339,13 +338,9 @@ class Genius_Infast_WooCommerce
 
 			if (is_array($response) && !empty($response['id'])) {
 				$customer_id = $response['id'];
-				$this->persist_customer_reference($order, $customer_id);
-				$order->add_order_note(__('Client INFast existant trouvé via l’e-mail.', 'genius_infast'));
-				return $customer_id;
+				return $this->get_matching_or_new_customer($order, $api, $customer_id, $payload, __('Client INFast existant trouvé via l’e-mail.', 'genius_infast'));
 			}
 		}
-
-		$payload = $this->build_customer_payload($order);
 
 		$response = $api->create_customer($payload);
 
@@ -362,6 +357,53 @@ class Genius_Infast_WooCommerce
 		$order->add_order_note(__('Client crée sur INFast.', 'genius_infast'));
 
 		return $customer_id;
+	}
+
+	/**
+	 * Reuse an INFast customer only when it matches the order billing details.
+	 *
+	 * @param WC_Order          $order       WooCommerce order.
+	 * @param Genius_Infast_API $api         API client.
+	 * @param string            $customer_id Existing INFast customer ID.
+	 * @param array             $payload     Customer payload built from order billing.
+	 * @param string            $reuse_note  Note to add when customer can be reused.
+	 * @param array|null        $customer    Optional already loaded INFast customer.
+	 * @return string|WP_Error
+	 */
+	private function get_matching_or_new_customer(WC_Order $order, Genius_Infast_API $api, $customer_id, array $payload, $reuse_note, array $customer = null)
+	{
+		if (null === $customer) {
+			$customer = $api->get_customer($customer_id);
+		}
+
+		if (is_wp_error($customer)) {
+			if (!$this->is_not_found_wp_error($customer)) {
+				return $customer;
+			}
+
+			$customer = null;
+		}
+
+		if (is_array($customer) && $this->customer_matches_billing_payload($customer, $payload)) {
+			$this->persist_customer_reference($order, $customer_id);
+			$order->add_order_note($reuse_note);
+			return $customer_id;
+		}
+
+		$response = $api->create_customer($payload);
+		if (is_wp_error($response)) {
+			return $response;
+		}
+
+		if (empty($response['data']['id'])) {
+			return new WP_Error('genius_infast_missing_customer_id', __('La reponse INFast ne contient pas d identifiant client.', 'genius_infast'));
+		}
+
+		$new_customer_id = $response['data']['id'];
+		$this->persist_customer_reference($order, $new_customer_id);
+		$order->add_order_note(__('Nouveau client INFast créé car les informations de facturation de la commande diffèrent du client existant.', 'genius_infast'));
+
+		return $new_customer_id;
 	}
 
 	/**
@@ -535,6 +577,65 @@ class Genius_Infast_WooCommerce
 			'mobile' => $order->get_billing_phone(),
 			'address' => $address,
 		]);
+	}
+
+	/**
+	 * Check whether an INFast customer already matches the order billing payload.
+	 *
+	 * @param array $customer INFast customer data.
+	 * @param array $payload  Customer payload built from order billing.
+	 * @return bool
+	 */
+	private function customer_matches_billing_payload(array $customer, array $payload)
+	{
+		$fields = array('name', 'email', 'mobile');
+
+		foreach ($fields as $field) {
+			$expected = isset($payload[$field]) ? $payload[$field] : '';
+			$current = isset($customer[$field]) ? $customer[$field] : '';
+
+			if ($this->normalize_customer_field($expected, $field) !== $this->normalize_customer_field($current, $field)) {
+				return false;
+			}
+		}
+
+		$expected_address = isset($payload['address']) && is_array($payload['address']) ? $payload['address'] : array();
+		$current_address = isset($customer['address']) && is_array($customer['address']) ? $customer['address'] : array();
+		$address_fields = array('street', 'postalCode', 'city', 'country');
+
+		foreach ($address_fields as $field) {
+			$expected = isset($expected_address[$field]) ? $expected_address[$field] : '';
+			$current = isset($current_address[$field]) ? $current_address[$field] : '';
+
+			if ($this->normalize_customer_field($expected, $field) !== $this->normalize_customer_field($current, $field)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Normalize customer fields before comparing WooCommerce and INFast values.
+	 *
+	 * @param mixed  $value Raw value.
+	 * @param string $field Field name.
+	 * @return string
+	 */
+	private function normalize_customer_field($value, $field = '')
+	{
+		$value = wp_strip_all_tags((string) $value);
+		$value = preg_replace('/\s+/', ' ', trim($value));
+
+		if ('mobile' === $field) {
+			return preg_replace('/\D+/', '', $value);
+		}
+
+		if (function_exists('remove_accents')) {
+			$value = remove_accents($value);
+		}
+
+		return strtolower($value);
 	}
 
 

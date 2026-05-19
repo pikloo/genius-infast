@@ -115,6 +115,16 @@ class Genius_Infast_API {
 	}
 
 	/**
+	 * Legacy helper: get customer by ID.
+	 *
+	 * @param string $customer_id Customer identifier.
+	 * @return array|WP_Error|null
+	 */
+	public function get_customer( $customer_id ) {
+		return $this->customers->get( $customer_id );
+	}
+
+	/**
 	 * Legacy helper: create customer.
 	 *
 	 * @param array $payload Payload data.

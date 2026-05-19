@@ -97,6 +97,35 @@ class Genius_Infast_Service_Customers
 	}
 
 	/**
+	 * Retrieve a customer by its INFast identifier.
+	 *
+	 * @param string $customer_id Customer identifier.
+	 * @return array|WP_Error|null
+	 */
+	public function get($customer_id)
+	{
+		$customer_id = trim((string) $customer_id);
+		if ('' === $customer_id) {
+			return null;
+		}
+
+		$response = $this->client->request(
+			'GET',
+			'customers/' . rawurlencode($customer_id)
+		);
+
+		if (is_wp_error($response)) {
+			return $response;
+		}
+
+		if (empty($response['data']) || !is_array($response['data'])) {
+			return null;
+		}
+
+		return $response['data'];
+	}
+
+	/**
 	 * Create a customer.
 	 *
 	 * @param array $payload Customer payload.

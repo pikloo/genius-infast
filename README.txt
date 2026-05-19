@@ -76,6 +76,9 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.11 =
+* Créer un nouveau client INFast si l’adresse change
+
 = 1.0.1.10 =
 * Fix doublons _genius_infast_item_id
 
