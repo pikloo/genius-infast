@@ -76,6 +76,10 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.12 =
+* Fix prix des lignes de facture WooCommerce avec doublons d'articles INFast.
+* Amélioration de la détection des articles INFast existants lors de la synchronisation produits.
+
 = 1.0.1.11 =
 * Créer un nouveau client INFast si l’adresse change
 

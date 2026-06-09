@@ -187,8 +187,9 @@ class Genius_Infast_Product_Sync
 			$reference = isset($payload['reference']) ? $payload['reference'] : '';
 			if ($reference) {
 				$existing = $api->find_item_by_reference($reference);
-				if (!is_wp_error($existing) && !empty($existing['data'][0]['id'])) {
-					$item_id = $existing['data'][0]['id'];
+				$item = !is_wp_error($existing) ? $this->extract_first_item_from_search_response($existing) : null;
+				if ($item && !empty($item['id'])) {
+					$item_id = $item['id'];
 				}
 			}
 		}
@@ -565,6 +566,29 @@ class Genius_Infast_Product_Sync
 		$vat = ($incl - $excl) / $excl * 100;
 
 		return max(0.0, round($vat, 2));
+	}
+
+	/**
+	 * Extract the first item from possible INFast list response formats.
+	 *
+	 * @param array $response API response.
+	 * @return array|null
+	 */
+	private function extract_first_item_from_search_response(array $response)
+	{
+		if (!empty($response['data'][0]) && is_array($response['data'][0])) {
+			return $response['data'][0];
+		}
+
+		if (!empty($response['data']['items'][0]) && is_array($response['data']['items'][0])) {
+			return $response['data']['items'][0];
+		}
+
+		if (!empty($response['items'][0]) && is_array($response['items'][0])) {
+			return $response['items'][0];
+		}
+
+		return null;
 	}
 
 	/**
