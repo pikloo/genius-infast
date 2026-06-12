@@ -4,7 +4,7 @@ Tags: woocommerce, facturation, infast, automation, comptabilite
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1.13
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -76,6 +76,11 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.13 =
+* Prise en compte de l'option "sans description" lors de la création des documents INFast.
+* Ajout d'une metabox INFast sur les commandes pour visualiser l'état de synchronisation et relancer l'envoi.
+* Mémorisation de la dernière erreur INFast sur la commande pour faciliter le diagnostic.
+
 = 1.0.1.12 =
 * Fix prix des lignes de facture WooCommerce avec doublons d'articles INFast.
 * Amélioration de la détection des articles INFast existants lors de la synchronisation produits.

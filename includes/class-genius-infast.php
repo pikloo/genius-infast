@@ -239,6 +239,9 @@ class Genius_Infast {
 		$this->loader->add_action( 'woocommerce_order_status_completed', $integration, 'handle_order_completed', 10, 1 );
 		$this->loader->add_action( 'woocommerce_order_status_processing', $integration, 'handle_order_completed', 10, 1 );
 		$this->loader->add_action( 'woocommerce_order_status_changed', $integration, 'handle_order_status_changed', 10, 4 );
+		$this->loader->add_action( 'add_meta_boxes', $integration, 'add_order_metabox' );
+		$this->loader->add_action( 'admin_post_genius_infast_retry_order', $integration, 'handle_retry_order_action' );
+		$this->loader->add_action( 'admin_notices', $integration, 'maybe_display_retry_notice' );
 		$this->loader->add_action( 'save_post_product', $this->product_sync, 'handle_product_save', 20, 3 );
 		$this->loader->add_action( 'transition_post_status', $this->product_sync, 'handle_transition_status', 20, 3 );
 		$this->loader->add_action( 'before_delete_post', $this->product_sync, 'handle_delete_post', 20, 1 );

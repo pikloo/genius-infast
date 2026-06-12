@@ -102,51 +102,180 @@ class Genius_Infast_WooCommerce
 	}
 
 	/**
-	 * Perform the synchronisation workflow.
+	 * Register the INFast order metabox.
 	 *
-	 * @param int $order_id WooCommerce order identifier.
 	 * @return void
 	 */
-	private function synchronise_order($order_id)
+	public function add_order_metabox()
 	{
 		if (!function_exists('wc_get_order')) {
 			return;
 		}
 
-		$order = wc_get_order($order_id);
+		foreach (array('shop_order', 'woocommerce_page_wc-orders') as $screen) {
+			add_meta_box(
+				'genius-infast-order-sync',
+				__('INFast', 'genius_infast'),
+				array($this, 'render_order_metabox'),
+				$screen,
+				'side',
+				'default'
+			);
+		}
+	}
+
+	/**
+	 * Render INFast synchronisation status on the order screen.
+	 *
+	 * @param WP_Post|WC_Order $post_or_order Current order context.
+	 * @return void
+	 */
+	public function render_order_metabox($post_or_order)
+	{
+		$order = $post_or_order instanceof WC_Order ? $post_or_order : wc_get_order($post_or_order->ID);
 
 		if (!$order instanceof WC_Order) {
 			return;
+		}
+
+		$document_id = trim((string) $order->get_meta('_genius_infast_document_id', true));
+		$transaction_id = trim((string) $order->get_meta('_genius_infast_transaction_id', true));
+		$email_sent = 'yes' === $order->get_meta('_genius_infast_document_email_sent', true);
+		$last_error = trim((string) $order->get_meta('_genius_infast_last_error', true));
+		$last_error_at = trim((string) $order->get_meta('_genius_infast_last_error_at', true));
+		$retry_url = wp_nonce_url(
+			admin_url('admin-post.php?action=genius_infast_retry_order&order_id=' . $order->get_id()),
+			'genius_infast_retry_order_' . $order->get_id()
+		);
+
+		echo '<p><strong>' . esc_html__('Document', 'genius_infast') . ':</strong> ' . esc_html($document_id ? $document_id : __('non créé', 'genius_infast')) . '</p>';
+		echo '<p><strong>' . esc_html__('Paiement', 'genius_infast') . ':</strong> ' . esc_html($transaction_id ? __('enregistré', 'genius_infast') : __('non enregistré', 'genius_infast')) . '</p>';
+		echo '<p><strong>' . esc_html__('Email', 'genius_infast') . ':</strong> ' . esc_html($email_sent ? __('envoyé', 'genius_infast') : __('non envoyé', 'genius_infast')) . '</p>';
+
+		if ('' !== $last_error) {
+			echo '<p style="color:#b32d2e;"><strong>' . esc_html__('Dernière erreur', 'genius_infast') . ':</strong><br />' . esc_html($last_error) . '</p>';
+			if ('' !== $last_error_at) {
+				echo '<p><small>' . esc_html($last_error_at) . '</small></p>';
+			}
+		}
+
+		echo '<p><a class="button button-primary" href="' . esc_url($retry_url) . '">' . esc_html__('Relancer l’envoi INFast', 'genius_infast') . '</a></p>';
+	}
+
+	/**
+	 * Handle manual INFast retry from the order metabox.
+	 *
+	 * @return void
+	 */
+	public function handle_retry_order_action()
+	{
+		if (!current_user_can('manage_woocommerce')) {
+			wp_die(esc_html__('Vous n\'êtes pas autorisé(e) à effectuer cette action.', 'genius_infast'));
+		}
+
+		$order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
+		check_admin_referer('genius_infast_retry_order_' . $order_id);
+
+		$result = $this->retry_order_sync($order_id);
+		$redirect = wp_get_referer() ? wp_get_referer() : admin_url('edit.php?post_type=shop_order');
+
+		if (is_wp_error($result)) {
+			$redirect = add_query_arg(
+				array(
+					'genius_infast_retry' => 'error',
+					'genius_infast_message' => $result->get_error_message(),
+				),
+				$redirect
+			);
+		} else {
+			$redirect = add_query_arg('genius_infast_retry', 'success', $redirect);
+		}
+
+		wp_safe_redirect($redirect);
+		exit;
+	}
+
+	/**
+	 * Display manual retry result on order screens.
+	 *
+	 * @return void
+	 */
+	public function maybe_display_retry_notice()
+	{
+		if (empty($_GET['genius_infast_retry'])) {
+			return;
+		}
+
+		$type = sanitize_text_field(wp_unslash($_GET['genius_infast_retry']));
+		$message = 'success' === $type
+			? __('Synchronisation INFast relancée avec succès.', 'genius_infast')
+			: (isset($_GET['genius_infast_message']) ? sanitize_text_field(wp_unslash($_GET['genius_infast_message'])) : __('Erreur lors de la relance INFast.', 'genius_infast'));
+
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			esc_attr('success' === $type ? 'success' : 'error'),
+			esc_html($message)
+		);
+	}
+
+	/**
+	 * Retry the INFast workflow manually, without waiting for a status transition.
+	 *
+	 * @param int $order_id WooCommerce order identifier.
+	 * @return true|WP_Error
+	 */
+	public function retry_order_sync($order_id)
+	{
+		return $this->synchronise_order($order_id, true);
+	}
+
+	/**
+	 * Perform the synchronisation workflow.
+	 *
+	 * @param int $order_id WooCommerce order identifier.
+	 * @param bool $force   Whether to bypass status retry guards.
+	 * @return true|WP_Error|null
+	 */
+	private function synchronise_order($order_id, $force = false)
+	{
+		if (!function_exists('wc_get_order')) {
+			return null;
+		}
+
+		$order = wc_get_order($order_id);
+
+		if (!$order instanceof WC_Order) {
+			return null;
 		}
 
 		$current_status = $this->normalize_order_status($order->get_status());
 		$statuses = $this->get_trigger_statuses();
 		$status = 'wc-' . $current_status;
 
-		if (!in_array($status, $statuses, true)) {
-			return;
+		if (!$force && !in_array($status, $statuses, true)) {
+			return null;
 		}
 
 		if ($this->should_skip_infast_order($order)) {
-			return;
+			return null;
 		}
 
 		if ($this->is_blocked_order_status($current_status) || $order->needs_payment()) {
-			return;
+			return null;
 		}
 
 		if ($this->is_order_fully_synced($order)) {
-			return;
+			return true;
 		}
 
 		$last_synced_status = $this->normalize_order_status($order->get_meta('_genius_infast_last_synced_status', true));
-		if ('' !== $last_synced_status && $last_synced_status === $current_status) {
-			return;
+		if (!$force && '' !== $last_synced_status && $last_synced_status === $current_status) {
+			return null;
 		}
 
 		// Avoid concurrent executions.
 		if ('yes' === $order->get_meta('_genius_infast_syncing', true)) {
-			return;
+			return new WP_Error('genius_infast_sync_in_progress', __('Une synchronisation INFast est déjà en cours pour cette commande.', 'genius_infast'));
 		}
 
 		$order->update_meta_data('_genius_infast_syncing', 'yes');
@@ -155,14 +284,24 @@ class Genius_Infast_WooCommerce
 		try {
 			$this->process_order($order);
 			$order->update_meta_data('_genius_infast_last_synced_status', $current_status);
+			$order->delete_meta_data('_genius_infast_last_error');
+			$order->delete_meta_data('_genius_infast_last_error_at');
 			$order->save();
 		} catch (Exception $exception) {
 			$this->log_error($exception->getMessage(), array('order_id' => $order->get_id()));
 			$order->add_order_note(sprintf(__('Erreur INFast : %s', 'genius_infast'), $exception->getMessage()));
+			$order->update_meta_data('_genius_infast_last_error', $exception->getMessage());
+			$order->update_meta_data('_genius_infast_last_error_at', current_time('mysql'));
+			$order->delete_meta_data('_genius_infast_syncing');
+			$order->save();
+
+			return new WP_Error('genius_infast_sync_failed', $exception->getMessage());
 		}
 
 		$order->delete_meta_data('_genius_infast_syncing');
 		$order->save();
+
+		return true;
 	}
 
 	/**
@@ -756,28 +895,7 @@ class Genius_Infast_WooCommerce
 			$vat_base = $subtotal > 0 ? $subtotal : $total;
 			$vat_tax = $subtotal > 0 ? $subtotal_tax : $total_tax;
 			$vat = $this->calculate_vat_rate($vat_base, $vat_tax);
-			$description = '';
-			if ($product) {
-				$description = wp_strip_all_tags($product->get_short_description());
-				if ('' === $description) {
-					$description = wp_strip_all_tags($product->get_description());
-				}
-			}
-
-			if ('' === $description) {
-				$meta_description = function_exists('wc_display_item_meta') ? wc_display_item_meta(
-					$item,
-					array(
-						'before' => '',
-						'separator' => ', ',
-						'after' => '',
-						'echo' => false,
-					)
-				) : '';
-
-				$description = wp_strip_all_tags((string) $meta_description);
-			}
-
+			$description = $this->get_order_item_description($item, $product);
 			if ($net_quantity > 0) {
 				$item_payload = array(
 					'lineType' => 'ITEM',
@@ -957,6 +1075,45 @@ class Genius_Infast_WooCommerce
 		}
 
 		return $payload;
+	}
+
+	/**
+	 * Build an optional INFast line description from a WooCommerce order item.
+	 *
+	 * @param WC_Order_Item_Product $item    Order item.
+	 * @param WC_Product|null       $product Product attached to the item.
+	 * @return string
+	 */
+	private function get_order_item_description($item, $product)
+	{
+		if ('yes' === get_option('genius_infast_skip_description', 'yes')) {
+			return '';
+		}
+
+		$description = '';
+
+		if ($product instanceof WC_Product) {
+			$description = wp_strip_all_tags($product->get_short_description());
+			if ('' === $description) {
+				$description = wp_strip_all_tags($product->get_description());
+			}
+		}
+
+		if ('' === $description) {
+			$meta_description = function_exists('wc_display_item_meta') ? wc_display_item_meta(
+				$item,
+				array(
+					'before' => '',
+					'separator' => ', ',
+					'after' => '',
+					'echo' => false,
+				)
+			) : '';
+
+			$description = wp_strip_all_tags((string) $meta_description);
+		}
+
+		return trim(substr($description, 0, 8196));
 	}
 
 	/**

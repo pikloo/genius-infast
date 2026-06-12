@@ -473,7 +473,7 @@ class Genius_Infast_Product_Sync
 			'metadata' => 'INTERNAL_DB_ID=' . $product->get_id(),
 		);
 
-		if ('yes' !== get_option('genius_infast_skip_description', 'no')) {
+		if ('yes' !== get_option('genius_infast_skip_description', 'yes')) {
 			$description = $product->get_description();
 			if (empty($description)) {
 				$description = $product->get_short_description();

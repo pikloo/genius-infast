@@ -261,7 +261,7 @@ class Genius_Infast_Admin
 			array(
 				'type' => 'string',
 				'sanitize_callback' => array($this, 'sanitize_checkbox'),
-				'default' => 'no',
+				'default' => 'yes',
 			)
 		);
 
