@@ -4,7 +4,7 @@ Tags: woocommerce, facturation, infast, automation, comptabilite
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.0.1.13
+Stable tag: 1.0.1.14
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -76,6 +76,10 @@ Oui, utilisez le champ « Destinataire en copie » pour indiquer une adresse e
 Pour toute question, contactez l'équipe Ingenius Agency via votre interlocuteur habituel ou l'adresse support fournie avec votre contrat INFast.
 
 == Changelog ==
+= 1.0.1.14 =
+* Force une description vide sur les lignes de document INFast lorsque l'option "sans description" est active.
+* Évite la reprise automatique des descriptions d'articles INFast existants sur les factures.
+
 = 1.0.1.13 =
 * Prise en compte de l'option "sans description" lors de la création des documents INFast.
 * Ajout d'une metabox INFast sur les commandes pour visualiser l'état de synchronisation et relancer l'envoi.

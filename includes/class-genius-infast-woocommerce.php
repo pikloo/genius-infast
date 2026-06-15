@@ -895,6 +895,7 @@ class Genius_Infast_WooCommerce
 			$vat_base = $subtotal > 0 ? $subtotal : $total;
 			$vat_tax = $subtotal > 0 ? $subtotal_tax : $total_tax;
 			$vat = $this->calculate_vat_rate($vat_base, $vat_tax);
+			$skip_description = 'yes' === get_option('genius_infast_skip_description', 'yes');
 			$description = $this->get_order_item_description($item, $product);
 			if ($net_quantity > 0) {
 				$item_payload = array(
@@ -907,7 +908,7 @@ class Genius_Infast_WooCommerce
 					'type' => 'SERVICE' //($product && $product->is_virtual()) ? 'SERVICE' : 'PRODUCT',
 				);
 
-				if ('' !== $description) {
+				if ($skip_description || '' !== $description) {
 					$item_payload['description'] = $description;
 				}
 
@@ -935,7 +936,7 @@ class Genius_Infast_WooCommerce
 					'phantom' => true,
 				);
 
-				if ('' !== $description) {
+				if ($skip_description || '' !== $description) {
 					$refund_payload['description'] = $description;
 				}
 
